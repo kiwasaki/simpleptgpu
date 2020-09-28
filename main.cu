@@ -15,8 +15,12 @@ __global__ void make_scene( sphere **device_spheres, scene **device_scene, const
 {
 	if( threadIdx.x == 0 && blockIdx.x == 0 ) {
 		device_spheres[ 0 ] = new sphere( make_float3( 0.f, 1.0f, 10.f ), 1.f, make_float4( 1.f, 1.f, 1.f, 1.f ) );
-		device_spheres[ 1 ] = new sphere( make_float3( 0.f, -1e4f, 0.f ), 1e4f, make_float4( 1.f, 1.f, 0.f, 1.f ) );
-		device_spheres[ 2 ] = new sphere( make_float3( 0.f, 7.f, 10.f ), 1.f, make_float4( 10.f, 0.f, 0.f, 0.f ) );
+		device_spheres[ 1 ] = new sphere( make_float3( 0.f, -1e3f, 0.f ), 1e3f, make_float4( 1.f, 1.f, 1.f, 1.f ) );
+		device_spheres[ 2 ] = new sphere( make_float3( 1e3f + 5.f, 0.f, 0.f ), 1e3f, make_float4( 0.8f, 0.2f, 0.1f, 1.f ) ); //right
+		device_spheres[ 3 ] = new sphere( make_float3( - 1e3f - 5.f, 0.f, 0.f ), 1e3f, make_float4( 1.f, 1.f, 1.f, 1.f ) ); //left
+		device_spheres[ 4 ] = new sphere( make_float3( 0.f, 0.f, 1e3f + 15.f ), 1e3f, make_float4( 1.f, 1.f, 1.f, 1.f ) );
+		device_spheres[ 5 ] = new sphere( make_float3( 0.f, 1e3f + 8, 0.f ), 1e3f, make_float4( 1.f, 1.f, 1.f, 1.f ) );
+		device_spheres[ 6 ] = new sphere( make_float3( 0.f, 7.f, 10.f ), 1.f, make_float4( 10.f, 10.f, 10.f, - 1.f ) );
 		*device_scene = new scene( device_spheres, n );
 	}
 }
@@ -69,16 +73,15 @@ __global__ void render_aa( float *pixels, scene **scene, curandState *rand_state
 	intersection isect;
 	float3 d, L;
 	ray r;
-	bool hit = false;
+	curandState rng = rand_state[ y * width + x ];
 
 	const float m_p = 2.f * tan( 40.f / 2.f * 3.14159265f / 180.f ) / float( height );
 
 	L = make_float3( 0.f, 0.f, 0.f );
 	for( int i = 0; i < ns; ++i ) {
-		d = { m_p * ( x - width / 2.f + curand_uniform( &rand_state[ y * width + x ] ) ), m_p * ( y - height / 2.f + curand_uniform( &rand_state[ y * width + x ] ) ), 1.f };
+		d = { m_p * ( x - width / 2.f + curand_uniform( &rng ) ), m_p * ( y - height / 2.f + curand_uniform( &rng ) ), 1.f };
 		r = { eye, normalize( d ) };
-		hit = ( *scene )->intersect( r, isect );
-		if( hit ) {
+		if( ( *scene )->intersect( r, isect ) ) {
 			L.x += 0.5f * ( isect.m_n.x + 1.f );
 			L.y += 0.5f * ( isect.m_n.y + 1.f );
 			L.z += 0.5f * ( isect.m_n.z + 1.f );
@@ -89,6 +92,77 @@ __global__ void render_aa( float *pixels, scene **scene, curandState *rand_state
 	pixels[ 3 * ( y * width + x ) + 2 ] = L.z / float( ns );
 }
 
+
+//
+__device__ inline bool is_emissive( const intersection &isect )
+{
+	return ( isect.m_c.w < 0.f );
+}
+
+// sample direction for diffuse BRDF
+__device__ inline float3 sample( const float3 n, const float xi1, const float xi2, float &pdf_w )
+{
+	const float3 t = normalize( ( std::abs( n.x ) > std::abs( n.y ) )? cross( n, make_float3( 0.f, n.z, - n.y ) ) : cross( n, make_float3( - n.z, 0.f, n.x ) ) );
+	const float3 b = cross( t, n );
+	const float cth = sqrt( 1.f - xi1 );
+	const float sth = sqrt( max( 0.f, 1.f - cth * cth ) );
+	const float cph = cos( 2.f * 3.14159265f * xi2 );
+	const float sph = sin( 2.f * 3.14159265f * xi2 );
+	pdf_w = 1.f / 3.14159265f * cth;
+	return cth * n + sth * cph * t + sth * sph * b;
+}
+
+//
+__global__ void render( float *pixels, scene **scene, curandState *rand_state, const int width, const int height, const float3 eye, const int ns )
+{
+	int x = blockIdx.x * blockDim.x + threadIdx.x;
+	int y = blockIdx.y * blockDim.y + threadIdx.y;
+	if( ( x >= width ) && ( y >= height ) ) return;
+
+
+	float3 L;
+	float pdf_w;
+	curandState rng = rand_state[ y * width + x ];
+	const float m_p = 2.f * tan( 40.f / 2.f * 3.14159265f / 180.f ) / float( height );
+	L = make_float3( 0.f, 0.f, 0.f );
+
+	for( int i = 0; i < ns; ++i ) {
+		intersection isect;
+		ray r;
+		float3 d;
+		d = { m_p * ( x - width / 2.f + curand_uniform( &rng ) ), m_p * ( y - height / 2.f + curand_uniform( &rng ) ), 1.f };
+		r = { eye, normalize( d ) };
+		float3 tp = make_float3( 1.f, 1.f, 1.f );
+
+		if( ( *scene )->intersect( r, isect ) ) {
+			//
+			if( isect.m_c.w < 0.f ) {
+				L.x += isect.m_c.x;
+				L.y += isect.m_c.y;
+				L.z += isect.m_c.z;
+			} else {
+				for( int j = 0; j < 10; ++j ) {
+					d = normalize( sample( isect.m_n, curand_uniform( &rng ), curand_uniform( &rng ), pdf_w ) );
+					tp *= make_float3( isect.m_c.x / 3.14159265f, isect.m_c.y / 3.14159265f, isect.m_c.z / 3.14159265f ) * dot( d, isect.m_n ) / pdf_w;
+					r = { isect.m_p, d };
+					bool hit = ( *scene )->intersect( r, isect );
+					if( hit ) {
+						if( isect.m_c.w < 0.f ) {
+							L += tp * make_float3( isect.m_c.x / 3.14159265f, isect.m_c.y / 3.14159265f, isect.m_c.z / 3.14159265f );
+							break;
+						}
+					} else {
+						break;
+					}
+				}
+			}
+		}
+	}
+	pixels[ 3 * ( y * width + x ) + 0 ] = L.x / float( ns );
+	pixels[ 3 * ( y * width + x ) + 1 ] = L.y / float( ns );
+	pixels[ 3 * ( y * width + x ) + 2 ] = L.z / float( ns );
+
+}
 
 
 //
@@ -107,7 +181,7 @@ int main( int argc, char** argv )
 	constexpr int width		= 512;
 	constexpr int height	= 512;
 
-	constexpr int n_object	= 3;
+	constexpr int n_object	= 7;
 
 	float 						*device_image;
 	std::unique_ptr< float [] > host_image;
@@ -155,7 +229,8 @@ int main( int argc, char** argv )
 		grid.y = height / block.y;
 
 		//trace<<< grid, block >>>( device_image, device_scene, width, height, eye );
-		render_aa<<< grid, block >>>( device_image, device_scene, device_rand_state, width, height, eye, 10 );
+		//render_aa<<< grid, block >>>( device_image, device_scene, device_rand_state, width, height, eye, 10 );
+		render<<< grid, block >>>( device_image, device_scene, device_rand_state, width, height, eye, 4096 );
 		checkCudaErrors( cudaGetLastError() );
 		checkCudaErrors( cudaDeviceSynchronize() );
 	}
