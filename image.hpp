@@ -47,9 +47,9 @@ inline void save_bmp( const float *pixels, const int width, const int height, co
 	);
 	for(int y = 0; y < height; y++){
 		for(int x = 0; x < width; x++){
-			scanline[3 * x + 0] = std::max( 0, std::min( 255, int( 255 * pixels[ 3 * ( y * width + x ) + 2 ] ) ) );
-			scanline[3 * x + 1] = std::max( 0, std::min( 255, int( 255 * pixels[ 3 * ( y * width + x ) + 1 ] ) ) );
-			scanline[3 * x + 2] = std::max( 0, std::min( 255, int( 255 * pixels[ 3 * ( y * width + x ) + 0 ] ) ) );
+			scanline[3 * x + 0] = std::max( 0, std::min( 255, int( 255 * pow( pixels[ 3 * ( y * width + x ) + 2 ], 1.f / 2.2f ) ) ) );
+			scanline[3 * x + 1] = std::max( 0, std::min( 255, int( 255 * pow( pixels[ 3 * ( y * width + x ) + 1 ], 1.f / 2.2f ) ) ) );
+			scanline[3 * x + 2] = std::max( 0, std::min( 255, int( 255 * pow( pixels[ 3 * ( y * width + x ) + 0 ], 1.f / 2.2f ) ) ) );
 		}
 		ofs.write((char*)scanline.data(), row_bytes);
 	}

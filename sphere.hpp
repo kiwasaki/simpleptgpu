@@ -10,6 +10,8 @@
 #include"ray.hpp"
 #include"intersection.hpp"
 
+constexpr float eps = 1e-4f;
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 class object
 {
@@ -47,9 +49,9 @@ __device__ float sphere::intersect( const ray &r ) const
 		const float sqrt_det = sqrt( det );
 		const float t1 = b - sqrt_det;
 		const float t2 = b + sqrt_det;
-		if( t1 > 1e-5f ) {
+		if( t1 > eps ) {
 			return t1;
-		} else if( t2 > 1e-5f ) {
+		} else if( t2 > eps ) {
 			return t2;
 		}
 	}
