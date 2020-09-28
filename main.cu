@@ -2,6 +2,9 @@
 #include<vector>
 #include<memory>
 
+#include<curand.h>
+#include<curand_kernel.h>
+
 #include"ray.hpp"
 #include"sphere.hpp"
 #include"scene.hpp"
@@ -52,11 +55,53 @@ __global__ void trace( float *pixels, scene **scene, const int width, const int 
 		pixels[ 3 * ( y * width + x ) + 1 ] = 0.f;
 		pixels[ 3 * ( y * width + x ) + 2 ] = 0.f;
 	}
-
 }
 
 
 
+//
+__global__ void render_aa( float *pixels, scene **scene, curandState *rand_state, const int width, const int height, const float3 eye, const int ns )
+{
+	int x = blockIdx.x * blockDim.x + threadIdx.x;
+	int y = blockIdx.y * blockDim.y + threadIdx.y;
+	if( ( x >= width ) && ( y >= height ) ) return;
+
+	intersection isect;
+	float3 d, L;
+	ray r;
+	bool hit = false;
+
+	const float m_p = 2.f * tan( 40.f / 2.f * 3.14159265f / 180.f ) / float( height );
+
+	L = make_float3( 0.f, 0.f, 0.f );
+	for( int i = 0; i < ns; ++i ) {
+		d = { m_p * ( x - width / 2.f + curand_uniform( &rand_state[ y * width + x ] ) ), m_p * ( y - height / 2.f + curand_uniform( &rand_state[ y * width + x ] ) ), 1.f };
+		r = { eye, normalize( d ) };
+		hit = ( *scene )->intersect( r, isect );
+		if( hit ) {
+			L.x += 0.5f * ( isect.m_n.x + 1.f );
+			L.y += 0.5f * ( isect.m_n.y + 1.f );
+			L.z += 0.5f * ( isect.m_n.z + 1.f );
+		}
+	}
+	pixels[ 3 * ( y * width + x ) + 0 ] = L.x / float( ns );
+	pixels[ 3 * ( y * width + x ) + 1 ] = L.y / float( ns );
+	pixels[ 3 * ( y * width + x ) + 2 ] = L.z / float( ns );
+}
+
+
+
+//
+__global__ void init( curandState *rand_state, const int width, const int height )
+{
+	int x = blockIdx.x * blockDim.x + threadIdx.x;
+	int y = blockIdx.y * blockDim.y + threadIdx.y;
+	if( ( x >= width ) || ( y >= height ) ) return;
+
+	curand_init( 1984, y * width + x, 0, &rand_state[ y * width + x ] );
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 int main( int argc, char** argv )
 {
 	constexpr int width		= 512;
@@ -68,14 +113,13 @@ int main( int argc, char** argv )
 	std::unique_ptr< float [] > host_image;
 	sphere **device_spheres;
 	scene  **device_scene;
-
-	//curandState *device_rand_state;
+	curandState *device_rand_state;
 
 	//
 	const float3 eye = { 0.f, 3.f, - 5.f };
 
 	//
-	//checkCudaErrors( cudaMalloc( ( void** ) &device_rand_state, sizeof( curandState ) * width * height ) );
+	checkCudaErrors( cudaMalloc( ( void** ) &device_rand_state, sizeof( curandState ) * width * height ) );
 
 	//
 	host_image = std::make_unique< float [] >( 3 * width * height );
@@ -96,8 +140,24 @@ int main( int argc, char** argv )
 		block.y = 16;
 		grid.x = width  / block.x;
 		grid.y = height / block.y;
+		checkCudaErrors( cudaMalloc( ( void ** ) &device_rand_state, width * height * sizeof( curandState ) ) );
+		init<<< grid, block >>>( device_rand_state, width, height );
+		checkCudaErrors( cudaGetLastError() );
+		checkCudaErrors( cudaDeviceSynchronize() );
+	}
 
-		trace<<< grid, block >>>( device_image, device_scene, width, height, eye );
+
+	{
+		dim3 grid, block;
+		block.x = 16;
+		block.y = 16;
+		grid.x = width  / block.x;
+		grid.y = height / block.y;
+
+		//trace<<< grid, block >>>( device_image, device_scene, width, height, eye );
+		render_aa<<< grid, block >>>( device_image, device_scene, device_rand_state, width, height, eye, 10 );
+		checkCudaErrors( cudaGetLastError() );
+		checkCudaErrors( cudaDeviceSynchronize() );
 	}
 
 	{
@@ -112,6 +172,7 @@ int main( int argc, char** argv )
 
 	//delete
 	checkCudaErrors( cudaFree( device_image ) );
+	checkCudaErrors( cudaFree( device_rand_state ) );
 	checkCudaErrors( cudaFree( device_spheres ) );
 	checkCudaErrors( cudaFree( device_scene ) );
 
