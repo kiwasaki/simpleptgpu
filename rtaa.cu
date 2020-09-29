@@ -116,8 +116,8 @@ __global__ void init( curandState *rand_state, const int width, const int height
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 int main( int argc, char** argv )
 {
-	constexpr int width		= 1024;
-	constexpr int height	= 1024;
+	constexpr int width  = 1024;
+	constexpr int height = 1024;
 
 	constexpr int n_object	= 7;
 
