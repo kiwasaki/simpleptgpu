@@ -109,8 +109,7 @@ __global__ void init( curandState *rand_state, const int width, const int height
 	int y = blockIdx.y * blockDim.y + threadIdx.y;
 	if( ( x >= width ) || ( y >= height ) ) return;
 
-	//curand_init( 1984, y * width + x, 0, &rand_state[ y * width + x ] );
-	curand_init( 1984 + y * width + x, 0, 0, &rand_state[ y * width + x ] );
+	curand_init( y * width + x, 0, 0, &rand_state[ y * width + x ] );
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
