@@ -10,7 +10,7 @@
 #include"ray.hpp"
 #include"intersection.hpp"
 
-constexpr float eps = 1e-4f;
+constexpr float eps = 5e-4f;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 class object
@@ -34,12 +34,15 @@ public:
 
 	__device__ float4 color() const { return m_color; }
 
+	__device__ float radius() const { return m_radius; }
+
 private:
 	float3	m_center;
 	float 	m_radius;
 	float4	m_color;
 };
 
+/*
 __device__ float sphere::intersect( const ray &r ) const
 {
 	float3 p = m_center - r.o();
@@ -57,6 +60,25 @@ __device__ float sphere::intersect( const ray &r ) const
 	}
 	return 0.0f;
 }
+*/
 
+__device__ float sphere::intersect( const ray &r ) const
+{
+	float3 p = m_center - r.o();
+	const float b = dot( p, r.d() );
+	const float det = b * b - dot( p, p ) + m_radius * m_radius;
+	float t = 0.f;
+	if( det >= 0.f ) {
+		const float sqrt_det = sqrt( det );
+		const float t1 = b - sqrt_det;
+		const float t2 = b + sqrt_det;
+		if( t1 > eps ) {
+			t = t1;
+		} else if( t2 > eps ) {
+			t = t2;
+		}
+	}
+	return t;
+}
 
 #endif

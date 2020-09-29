@@ -15,7 +15,26 @@ constexpr float pi = 3.14159265f;
 constexpr float two_pi = 2.f * pi;
 constexpr float inv_pi = 0.318309886f;
 
-//
+__global__ void make_scene( sphere **device_spheres, scene **device_scene, const int n )
+{
+	if( threadIdx.x == 0 && blockIdx.x == 0 ) {
+		int k = 0;
+
+		//device_spheres[ 0 ] = new sphere( make_float3( 0.f, 1.0f, 10.f ), 1.f, make_float4( 1.f, 1.f, 1.f, 0.1f ) );
+		device_spheres[ k++ ] = new sphere( make_float3( 0.f, -1e3f, 0.f ), 1e3f, make_float4( 1.f, 1.f, 1.f, 0.1f ) ); //floor
+		device_spheres[ k++ ] = new sphere( make_float3( 1e3f + 5.f, 0.f, 0.f ), 1e3f, make_float4( 0.8f, 0.2f, 0.1f, 0.1f ) ); //right
+		device_spheres[ k++ ] = new sphere( make_float3( - 1e3f - 5.f, 0.f, 0.f ), 1e3f, make_float4( 0.1f, 0.2f, 0.8f, 0.1f ) ); //left
+		device_spheres[ k++ ] = new sphere( make_float3( 0.f, 0.f, 1e3f + 15.f ), 1e3f, make_float4( 1.f, 1.f, 1.f, 0.1f ) ); //far
+		device_spheres[ k++ ] = new sphere( make_float3( 0.f, 1e3f + 8, 0.f ), 1e3f, make_float4( 1.f, 1.f, 1.f, 0.01f ) ); //ceil
+		device_spheres[ k++ ] = new sphere( make_float3( 0.f, 7.0f, 10.f ), 1.f, make_float4( 10.f, 10.f, 10.f, - 1.f ) ); //light source
+		device_spheres[ k++ ] = new sphere( make_float3( 0.f, 1.0f, 10.f ), 1.f, make_float4( 1.f, 1.f, 1.f, 0.1f ) );
+
+		*device_scene = new scene( device_spheres, k );
+	}
+}
+
+
+/*
 __global__ void make_scene( sphere **device_spheres, scene **device_scene, const int n )
 {
 	if( threadIdx.x == 0 && blockIdx.x == 0 ) {
@@ -40,6 +59,7 @@ __global__ void make_scene( sphere **device_spheres, scene **device_scene, const
 		*device_scene = new scene( device_spheres, k );
 	}
 }
+*/
 
 //
 __global__ void free_scene( sphere **device_spheres, scene **device_scene, const int n )
@@ -258,20 +278,19 @@ __global__ void init( curandState *rand_state, const int width, const int height
 	int x = blockIdx.x * blockDim.x + threadIdx.x;
 	int y = blockIdx.y * blockDim.y + threadIdx.y;
 	if( ( x >= width ) || ( y >= height ) ) return;
-
-	curand_init( 1984, y * width + x, 0, &rand_state[ y * width + x ] );
+	curand_init( 1984 + y * width + x, 0, 0, &rand_state[ y * width + x ] );
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 int main( int argc, char** argv )
 {
-	constexpr int width		= 512;
-	constexpr int height	= 512;
+	constexpr int width		= 1024;
+	constexpr int height	= 1024;
 
 	constexpr int n_object	= 7;
 
-	float 						*device_image;
-	std::unique_ptr< float [] > host_image;
+	float *device_buffer;
+
 	sphere **device_spheres;
 	scene  **device_scene;
 	curandState *device_rand_state;
@@ -280,11 +299,10 @@ int main( int argc, char** argv )
 	const float3 eye = { 0.f, 3.f, - 5.f };
 
 	//
-	checkCudaErrors( cudaMalloc( ( void** ) &device_rand_state, sizeof( curandState ) * width * height ) );
+	checkCudaErrors( cudaMallocManaged( ( void ** ) &device_buffer, sizeof( float ) * 3 * width * height ) );
 
 	//
-	host_image = std::make_unique< float [] >( 3 * width * height );
-	checkCudaErrors( cudaMalloc( ( void ** ) &device_image, sizeof( float ) * 3 * width * height ) );
+	checkCudaErrors( cudaMalloc( ( void** ) &device_rand_state, sizeof( curandState ) * width * height ) );
 
 	//シーンの作成
 	{
@@ -317,9 +335,7 @@ int main( int argc, char** argv )
 		grid.x = width  / block.x;
 		grid.y = height / block.y;
 
-		//trace<<< grid, block >>>( device_image, device_scene, width, height, eye );
-		//render_aa<<< grid, block >>>( device_image, device_scene, device_rand_state, width, height, eye, 10 );
-		render<<< grid, block >>>( device_image, device_scene, device_rand_state, width, height, eye, 1024 );
+		render<<< grid, block >>>( device_buffer, device_scene, device_rand_state, width, height, eye, 4096 );
 		checkCudaErrors( cudaGetLastError() );
 		checkCudaErrors( cudaDeviceSynchronize() );
 	}
@@ -332,15 +348,16 @@ int main( int argc, char** argv )
 		checkCudaErrors( cudaDeviceSynchronize() );
 	}
 
-	checkCudaErrors( cudaMemcpy( host_image.get(), device_image, sizeof( float ) * 3 * width * height, cudaMemcpyDeviceToHost ) );
+	//checkCudaErrors( cudaMemcpy( host_image.get(), device_image, sizeof( float ) * 3 * width * height, cudaMemcpyDeviceToHost ) );
 
-	save_bmp( host_image.get(), width, height, "test.bmp" );
+	save_bmp( device_buffer, width, height, "test.bmp" );
 
 	//delete
-	checkCudaErrors( cudaFree( device_image ) );
+
 	checkCudaErrors( cudaFree( device_rand_state ) );
 	checkCudaErrors( cudaFree( device_spheres ) );
 	checkCudaErrors( cudaFree( device_scene ) );
+	checkCudaErrors( cudaFree( device_buffer ) );
 
 	return 0;
 
