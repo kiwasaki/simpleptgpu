@@ -229,9 +229,6 @@ __global__ void render( float *pixels, scene **scene, curandState *rand_state, c
 	ray r;
 	float3 d;
 	for( int i = 0; i < ns; ++i ) {
-//		intersection isect;
-//		ray r;
-//		float3 d;
 		d = { m_p * ( x - width / 2.f + curand_uniform( &rng ) ), m_p * ( y - height / 2.f + curand_uniform( &rng ) ), 1.f };
 		r = { eye, normalize( d ) };
 		float3 tp = make_float3( 1.f, 1.f, 1.f );
@@ -244,11 +241,14 @@ __global__ void render( float *pixels, scene **scene, curandState *rand_state, c
 				L.z += isect.m_c.z;
 			} else {
 				for( int j = 0; j < 10; ++j ) {
+
 					//d = sample( isect.m_n, curand_uniform( &rng ), curand_uniform( &rng ), pdf_w );
+					//tp *= make_float3( isect.m_c.x * inv_pi, isect.m_c.y * inv_pi, isect.m_c.z * inv_pi ) * dot( d, isect.m_n ) / pdf_w;
+
 					float3 wo = - 1.f * d;
 					d = sample_ggx( isect.m_n, wo, isect.m_c.w, curand_uniform( &rng ), curand_uniform( &rng ), pdf_w );
-					//tp *= make_float3( isect.m_c.x * inv_pi, isect.m_c.y * inv_pi, isect.m_c.z * inv_pi ) * dot( d, isect.m_n ) / pdf_w;
 					tp *= eval_ggx( d, wo, isect.m_n, { isect.m_c.x, isect.m_c.y, isect.m_c.z }, isect.m_c.w ) * dot( d, isect.m_n ) / pdf_w;
+
 					r = { isect.m_p, d };
 					bool hit = ( *scene )->intersect( r, isect );
 					if( hit ) {
@@ -266,7 +266,6 @@ __global__ void render( float *pixels, scene **scene, curandState *rand_state, c
 	pixels[ 3 * ( y * width + x ) + 0 ] = L.x / float( ns );
 	pixels[ 3 * ( y * width + x ) + 1 ] = L.y / float( ns );
 	pixels[ 3 * ( y * width + x ) + 2 ] = L.z / float( ns );
-
 }
 
 
@@ -276,7 +275,7 @@ __global__ void init( curandState *rand_state, const int width, const int height
 	int x = blockIdx.x * blockDim.x + threadIdx.x;
 	int y = blockIdx.y * blockDim.y + threadIdx.y;
 	if( ( x >= width ) || ( y >= height ) ) return;
-	curand_init( 1984 + y * width + x, 0, 0, &rand_state[ y * width + x ] );
+	curand_init( y * width + x, 0, 0, &rand_state[ y * width + x ] );
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
