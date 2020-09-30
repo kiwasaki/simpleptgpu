@@ -87,7 +87,9 @@ __global__ void render_aa( float *pixels, scene **scene, curandState *rand_state
 
 	L = make_float3( 0.f, 0.f, 0.f );
 	for( int i = 0; i < ns; ++i ) {
-		d = { m_p * ( float( x ) - float( width ) / 2.f + curand_uniform( &rng ) ), m_p * ( float( y ) - float( height ) / 2.f + curand_uniform( &rng ) ), 1.f };
+		d = { m_p * ( float( x ) - float( width ) / 2.f + curand_uniform( &rng ) ),
+		      m_p * ( float( y ) - float( height ) / 2.f + curand_uniform( &rng ) ),
+		      1.f };
 		//d = { m_p * ( x - width / 2.f + 0.5f ), m_p * ( y - height / 2.f + 0.5f ), 1.f };
 		r = { eye, normalize( d ) };
 		if( ( *scene )->intersect( r, isect ) ) {

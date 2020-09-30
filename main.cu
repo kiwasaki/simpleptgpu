@@ -19,16 +19,14 @@ __global__ void make_scene( sphere **device_spheres, scene **device_scene, const
 {
 	if( threadIdx.x == 0 && blockIdx.x == 0 ) {
 		int k = 0;
-
 		//device_spheres[ 0 ] = new sphere( make_float3( 0.f, 1.0f, 10.f ), 1.f, make_float4( 1.f, 1.f, 1.f, 0.1f ) );
-		device_spheres[ k++ ] = new sphere( make_float3( 0.f, -1e3f, 0.f ), 1e3f, make_float4( 1.f, 1.f, 1.f, 0.1f ) ); //floor
-		device_spheres[ k++ ] = new sphere( make_float3( 1e3f + 5.f, 0.f, 0.f ), 1e3f, make_float4( 0.8f, 0.2f, 0.1f, 0.1f ) ); //right
-		device_spheres[ k++ ] = new sphere( make_float3( - 1e3f - 5.f, 0.f, 0.f ), 1e3f, make_float4( 0.1f, 0.2f, 0.8f, 0.1f ) ); //left
+		device_spheres[ k++ ] = new sphere( make_float3( 0.f, -1e3f, 0.f ), 1e3f, make_float4( 1.f, 1.f, 1.f, 0.2f ) ); //floor
+		device_spheres[ k++ ] = new sphere( make_float3( 1e3f + 5.f, 0.f, 0.f ), 1e3f, make_float4( 0.8f, 0.2f, 0.1f, 0.8f ) ); //right
+		device_spheres[ k++ ] = new sphere( make_float3( - 1e3f - 5.f, 0.f, 0.f ), 1e3f, make_float4( 0.1f, 0.2f, 0.8f, 0.8f ) ); //left
 		device_spheres[ k++ ] = new sphere( make_float3( 0.f, 0.f, 1e3f + 15.f ), 1e3f, make_float4( 1.f, 1.f, 1.f, 0.1f ) ); //far
-		device_spheres[ k++ ] = new sphere( make_float3( 0.f, 1e3f + 8, 0.f ), 1e3f, make_float4( 1.f, 1.f, 1.f, 0.01f ) ); //ceil
-		device_spheres[ k++ ] = new sphere( make_float3( 0.f, 7.0f, 10.f ), 1.f, make_float4( 10.f, 10.f, 10.f, - 1.f ) ); //light source
-		device_spheres[ k++ ] = new sphere( make_float3( 0.f, 1.0f, 10.f ), 1.f, make_float4( 1.f, 1.f, 1.f, 0.1f ) );
-
+		device_spheres[ k++ ] = new sphere( make_float3( 0.f, 1e3f + 8, 0.f ), 1e3f, make_float4( 1.f, 1.f, 1.f, 0.3f ) ); //ceil
+		device_spheres[ k++ ] = new sphere( make_float3( 0.f, 7.0f, 10.f ), 1.f, make_float4( 5.f, 5.f, 5.f, - 1.f ) ); //light source
+		device_spheres[ k++ ] = new sphere( make_float3( 0.f, 1.0f, 10.f ), 1.f, make_float4( 1.f, 1.f, 1.f, 0.01f ) );
 		*device_scene = new scene( device_spheres, k );
 	}
 }
@@ -62,10 +60,10 @@ __global__ void make_scene( sphere **device_spheres, scene **device_scene, const
 */
 
 //
-__global__ void free_scene( sphere **device_spheres, scene **device_scene, const int n )
+__global__ void free_scene( sphere **device_spheres, scene **device_scene )
 {
 	if( threadIdx.x == 0 && blockIdx.x == 0 ) {
-		for( int i = 0; i < n; ++i ) {
+		for( int i = 0, n = ( *device_scene )->size(); i < n; ++i ) {
 			delete device_spheres[ i ];
 		}
 		delete *device_scene;
@@ -343,7 +341,7 @@ int main( int argc, char** argv )
 	std::cout << std::chrono::duration_cast< std::chrono::milliseconds >( end - start ).count() << "ms.\n";
 
 	{
-		free_scene<<< 1, 1 >>>( device_spheres, device_scene, n_object );
+		free_scene<<< 1, 1 >>>( device_spheres, device_scene );
 		checkCudaErrors( cudaGetLastError() );
 		checkCudaErrors( cudaDeviceSynchronize() );
 	}

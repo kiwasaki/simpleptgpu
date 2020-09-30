@@ -43,6 +43,7 @@ public:
 		return hit;
 	}
 
+	__device__ int size() const { return m_n; }
 
 private:
 	sphere		**m_object;
